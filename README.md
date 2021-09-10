@@ -9,7 +9,8 @@ Test evidence artifacts such as JUnit reports are widely used and consumed in di
 
 ## Basic usage
 
-Build running (Requires golang 1.12 or newer or alternatively docker and docker-compose):
+**Requires a running immudb instance, see <https://github.com/codenotary/immudb> for more information.**
+Build running (Requires golang 1.12 or newer or docker and docker-compose) :
 
 ```bash
 go build -o junit2immudb 
