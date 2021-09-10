@@ -1,0 +1,8 @@
+version: "3.9" 
+services:
+  builder:
+    user: "${UID}:${GID}"
+    build: .
+    volumes:
+      - .:/app
+    entrypoint: go build -o /app/dist/go-junit2immudb
