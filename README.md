@@ -1,7 +1,7 @@
 # go-junit2immudb
 
 Inspired by https://github.com/SimoneLazzaris/stdin2immudb and https://github.com/joshdk/go-junit
-The purpose of this project is to provide a simple too to store test results immutably.
+The purpose of this project is to provide a simple tool to store test results immutably.
 
 ## Why
 
