@@ -88,11 +88,14 @@ func testSuiteToImmudb(parsed []junit.Suite) {
 		}
 		processedString := reg.ReplaceAllString(s.Name, "")
 		formattedName := strings.Replace(processedString, " ", "_", -1)
-		_, err = client.SQLExec(ctx, fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s (id INTEGER AUTO_INCREMENT, name VARCHAR NOT NULL, classname VARCHAR, duration BLOB, status BLOB, message VARCHAR, error BLOB, properties BLOB, systemout VARCHAR[256], systemerr VARCHAR[256], PRIMARY KEY id);", formattedName), nil)
+		createStatement := fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s (id INTEGER AUTO_INCREMENT, name VARCHAR, classname VARCHAR, duration BLOB, status BLOB, message VARCHAR, error BLOB, properties BLOB, systemout VARCHAR, systemerr VARCHAR, PRIMARY KEY id)", formattedName)
+		log.Println(createStatement)
+		_, err = client.SQLExec(ctx, createStatement, nil)
 		if err != nil {
+			log.Println(err.Error())
 			log.Fatalf("Error creating table %s", s.Name)
 		}
-		_, err = client.SQLExec(ctx, fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s (id INTEGER AUTO_INCREMENT, name VARCHAR, package BLOB, properties BLOB, tests BLOB, suites BLOB, systemout VARCHAR[256], systemerr VARCHAR[256], totals BLOB, PRIMARY KEY id)", config.suiteTableName), nil)
+		_, err = client.SQLExec(ctx, fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s (id INTEGER AUTO_INCREMENT, name VARCHAR, package BLOB, properties BLOB, tests BLOB, suites BLOB, systemout VARCHAR, systemerr VARCHAR, totals BLOB, PRIMARY KEY id)", config.suiteTableName), nil)
 		if err != nil {
 			log.Println(err.Error())
 			log.Fatalf("Error creating table %s", s.Name)
