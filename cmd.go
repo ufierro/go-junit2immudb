@@ -45,6 +45,9 @@ func initConfig() {
 	flag.Parse()
 }
 
+var unmashalErr string = "Error unmarshalling value"
+var marshalErr string = "Error marshalling value"
+
 func parseFiles() ([]junit.Suite, error) {
 	// check if file list or single file
 	var cError error
@@ -113,12 +116,24 @@ func testSuiteToImmudb(parsed []junit.Suite, client immuclient.ImmuClient, ctx c
 			log.Fatalf("Error creating table %s", s.Name)
 		}
 		if err != nil {
-			log.Fatal("Error marshaling parsed response from junit file")
+			log.Fatal(unmashalErr)
 		}
 		p, err := json.Marshal(s.Package)
+		if err != nil {
+			log.Fatal("Error marshaling parsed response from junit file")
+		}
 		props, err := json.Marshal(s.Properties)
+		if err != nil {
+			log.Fatal(unmashalErr)
+		}
 		t, err := json.Marshal(s.Tests)
+		if err != nil {
+			log.Fatal(unmashalErr)
+		}
 		suites, err := json.Marshal(s.Suites)
+		if err != nil {
+			log.Fatal(unmashalErr)
+		}
 		totals, err := json.Marshal(s.Totals)
 		if err != nil {
 			log.Fatal("Error marshalling parser response for test suite summary")
@@ -132,8 +147,17 @@ func testSuiteToImmudb(parsed []junit.Suite, client immuclient.ImmuClient, ctx c
 		}
 		for _, t := range s.Tests {
 			d, err := json.Marshal(t.Duration)
+			if err != nil {
+				log.Fatal(marshalErr)
+			}
 			p, err := json.Marshal(t.Properties)
+			if err != nil {
+				log.Fatal(marshalErr)
+			}
 			s, err := json.Marshal(t.Status)
+			if err != nil {
+				log.Fatal(marshalErr)
+			}
 			e, err := json.Marshal(t.Error)
 			if err != nil {
 				log.Fatalf("Error marshalling parser response for %s", t.Name)
