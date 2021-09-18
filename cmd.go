@@ -153,7 +153,14 @@ func readResults(client immuclient.ImmuClient, ctx context.Context) {
 	if err != nil {
 		log.Fatalf("Error reading system tables")
 	}
-	var tableToUse string
+	var tableToLookFor string
+	tableToUse := ""
+
+	if config.readSummary {
+		tableToLookFor = config.suiteTableName
+	} else {
+		tableToLookFor = config.readPrefix
+	}
 	for _, r := range tableList.Rows {
 		row := make([]string, len(r.Values))
 		for i, v := range r.Values {
@@ -162,20 +169,29 @@ func readResults(client immuclient.ImmuClient, ctx context.Context) {
 		log.Printf("Configuration: Summary %t, Suite Table Name:%s", config.readSummary, config.suiteTableName)
 		for t := range row {
 			log.Printf("Found table %s", row[t])
-			if config.suiteTableName == strings.Replace(row[t], `"`, "", -1) {
-				log.Printf("Using table %s", row[t])
-				tableToUse = row[t]
+			if strings.Contains(strings.Replace(row[t], `"`, "", -1), tableToLookFor) {
+				tableToUse = strings.Replace(row[t], `"`, "", -1)
 				break
-			} else {
-				if strings.Contains(strings.Replace(row[t], `"`, "", -1), config.readPrefix) {
-					tableToUse = row[t]
-					break
-				}
 			}
 		}
-
 	}
-	log.Println(tableToUse)
+	if tableToUse == "" {
+		tableToUse = config.readPrefix
+	}
+	q := fmt.Sprintf("SELECT * FROM %s", tableToUse)
+	log.Println(q)
+	summaryResults, err := client.SQLQuery(ctx, q, nil, false)
+	if err != nil {
+		log.Println(err.Error())
+		log.Fatalf("Failed to read table %s", tableToUse)
+	}
+	for _, sumInfo := range summaryResults.Rows {
+		//TODO: Check each value, if blob then converto type from junit package, pretty print results
+		for i, v := range sumInfo.Values {
+			log.Println(i)
+			log.Println(schema.RenderValue(v.Value))
+		}
+	}
 }
 
 func main() {
