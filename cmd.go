@@ -23,16 +23,25 @@ var config struct {
 	database       string
 	filename       string
 	suiteTableName string
+	readPrefix     string
+	readResults    bool
+	readSummary    bool
+
+	limit int
 }
 
 func initConfig() {
 	flag.StringVar(&config.hostname, "hostname", "localhost", "Hostname or IP address for immudb")
-	flag.IntVar(&config.port, "port", 3322, "Port number of immudb server")
 	flag.StringVar(&config.username, "username", "immudb", "Username for authenticating to immudb")
 	flag.StringVar(&config.password, "password", "immudb", "Password for authenticating to immudb")
 	flag.StringVar(&config.database, "database", "defaultdb", "Name of the database to use")
 	flag.StringVar(&config.filename, "filename", "junit.xml", "The name of file, accepts comma separated values")
 	flag.StringVar(&config.suiteTableName, "summary_tbl_name", "junit_suite_summary", "The name of table used for test suite summary, creates new one if it doesn't exist already")
+	flag.IntVar(&config.port, "port", 3322, "Port number of immudb server")
+	flag.BoolVar(&config.readResults, "read-results", false, "Read results from db, if specified write related flags are ignored")
+	flag.BoolVar(&config.readSummary, "summary", false, "Read only summary results from db, if specified table name related flags are ignored")
+	flag.StringVar(&config.readPrefix, "suite-prefix", "junit_", "The prefix for which tests will be read, queries table and obtains all test results")
+	flag.IntVar(&config.limit, "limit", 10, "limit=N where N is the maximum number of test executions to display for a given test")
 	flag.Parse()
 }
 
@@ -59,13 +68,12 @@ func parseFiles() ([]junit.Suite, error) {
 
 }
 
-func testSuiteToImmudb(parsed []junit.Suite) {
+func initDbSession() (immuclient.ImmuClient, context.Context) {
 	opts := immuclient.DefaultOptions().WithAddress(config.hostname).WithPort(config.port)
 	client, err := immuclient.NewImmuClient(opts)
 	if err != nil {
 		log.Fatalln("Failed to connect. Reason:", err)
 	}
-
 	ctx := context.Background()
 
 	login, err := client.Login(ctx, []byte(config.username), []byte(config.password))
@@ -79,6 +87,10 @@ func testSuiteToImmudb(parsed []junit.Suite) {
 		log.Fatalln("Failed to use the database. Reason:", err)
 	}
 	ctx = metadata.NewOutgoingContext(ctx, metadata.Pairs("authorization", udr.GetToken()))
+	return client, ctx
+}
+
+func testSuiteToImmudb(parsed []junit.Suite, client immuclient.ImmuClient, ctx context.Context) {
 	for _, s := range parsed {
 		log.Printf("Processing suite: %s", s.Name)
 		log.Printf("Executing: 'create table if not exists' for suite %s, characters not allowed in table names will be replaced by underscores", s.Name)
@@ -136,13 +148,50 @@ func testSuiteToImmudb(parsed []junit.Suite) {
 
 }
 
+func readResults(client immuclient.ImmuClient, ctx context.Context) {
+	tableList, err := client.ListTables(ctx)
+	if err != nil {
+		log.Fatalf("Error reading system tables")
+	}
+	var tableToUse string
+	for _, r := range tableList.Rows {
+		//junit_suite_summary is the name of the default summary table
+		row := make([]string, len(r.Values))
+		// if row.Values == config.suiteTableName {
+		for i, v := range r.Values {
+			row[i] = schema.RenderValue(v.Value)
+		}
+		log.Printf("Configuration: Summary %t, Suite Table Name:%s", config.readSummary, config.suiteTableName)
+		for t := range row {
+			log.Printf("Found table %s", row[t])
+			if config.suiteTableName == strings.Replace(row[t], `"`, "", -1) {
+				log.Printf("Using table %s", row[t])
+				tableToUse = row[t]
+				break
+			} else {
+				if strings.Contains(strings.Replace(row[t], `"`, "", -1), config.readPrefix) {
+					tableToUse = row[t]
+					break
+				}
+			}
+		}
+
+	}
+	log.Println(tableToUse)
+}
+
 func main() {
 	initConfig()
-	response, err := parseFiles()
-	if err != nil {
-		log.Fatalf("Failed to parse file, error: %s", config.filename)
+	client, ctx := initDbSession()
+	if !config.readResults {
+		response, err := parseFiles()
+		if err != nil {
+			log.Fatalf("Failed to parse file, error: %s", config.filename)
+		}
+		testSuiteToImmudb(response, client, ctx)
+
+	} else {
+		readResults(client, ctx)
 	}
-	testSuiteToImmudb(response)
-	log.Println("Finished exporting junit results to immudb")
 
 }
