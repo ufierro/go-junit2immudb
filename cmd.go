@@ -155,9 +155,7 @@ func readResults(client immuclient.ImmuClient, ctx context.Context) {
 	}
 	var tableToUse string
 	for _, r := range tableList.Rows {
-		//junit_suite_summary is the name of the default summary table
 		row := make([]string, len(r.Values))
-		// if row.Values == config.suiteTableName {
 		for i, v := range r.Values {
 			row[i] = schema.RenderValue(v.Value)
 		}
