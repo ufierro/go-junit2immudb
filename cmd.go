@@ -186,6 +186,7 @@ func readResults(client immuclient.ImmuClient, ctx context.Context) {
 		tableToLookFor = config.readPrefix
 	}
 	for _, r := range tableList.Rows {
+		// (r.Columns)
 		row := make([]string, len(r.Values))
 		for i, v := range r.Values {
 			row[i] = schema.RenderValue(v.Value)
@@ -209,12 +210,29 @@ func readResults(client immuclient.ImmuClient, ctx context.Context) {
 		log.Println(err.Error())
 		log.Fatalf("Failed to read table %s", tableToUse)
 	}
+	colsLen := len(summaryResults.Columns)
 	for _, sumInfo := range summaryResults.Rows {
-		//TODO: Check each value, if blob then converto type from junit package, pretty print results
-		for i, v := range sumInfo.Values {
-			log.Println(i)
-			log.Println(schema.RenderValue(v.Value))
+		for i := 0; i <= colsLen-1; i++ {
+			currentCol := strings.Split(strings.Replace(sumInfo.Columns[i], `)`, "", -1), `.`)[len(strings.Split(sumInfo.Columns[i], `.`))-1]
+			currentVal := sumInfo.Values[i]
+			switch currentCol {
+			case "properties":
+				var props map[string]string
+				json.Unmarshal(currentVal.GetBs(), &props)
+				if err != nil {
+					log.Fatal("error marshalling value")
+				}
+				log.Printf("------%s-------", currentCol)
+				for k, v := range props {
+					log.Printf("%s:%s", k, v)
+				}
+			default:
+				log.Printf("------%s-------\n------%s-------", currentCol, currentVal)
+
+			}
+
 		}
+
 	}
 }
 
