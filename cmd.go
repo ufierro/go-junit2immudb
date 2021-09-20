@@ -30,7 +30,7 @@ var config struct {
 	limit int
 }
 
-var nameRelationTable string = "NM_REL"
+var nameRelationTable = "NM_REL"
 
 func initConfig() {
 	flag.StringVar(&config.hostname, "hostname", "localhost", "Hostname or IP address for immudb")
@@ -47,8 +47,8 @@ func initConfig() {
 	flag.Parse()
 }
 
-var unmashalErr string = "Error unmarshalling value"
-var marshalErr string = "Error marshalling value"
+var unmarshallErr = "Error unmarshalling value"
+var marshalErr = "Error marshalling value"
 
 func parseFiles() ([]junit.Suite, error) {
 	// check if file list or single file
@@ -95,7 +95,7 @@ func initDbSession() (immuclient.ImmuClient, context.Context) {
 	return client, ctx
 }
 
-func getOriginalName(client immuclient.ImmuClient, ctx context.Context, suiteName string) string {
+func getOriginalName(ctx context.Context, client immuclient.ImmuClient, suiteName string) string {
 	q := fmt.Sprintf("SELECT modified_name FROM %s WHERE OG_NAME = '%s' ", nameRelationTable, suiteName)
 	nameQueryResult, err := client.SQLQuery(ctx, q, nil, false)
 	originalName := ""
@@ -110,7 +110,7 @@ func getOriginalName(client immuclient.ImmuClient, ctx context.Context, suiteNam
 	return originalName
 }
 
-func testSuiteToImmudb(parsed []junit.Suite, client immuclient.ImmuClient, ctx context.Context) {
+func testSuiteToImmudb(ctx context.Context, parsed []junit.Suite, client immuclient.ImmuClient) {
 	for _, s := range parsed {
 		if s.Name == "" {
 			log.Printf("no test suite name found in %s , consider adding a name for ease of usage", config.filename)
@@ -118,20 +118,17 @@ func testSuiteToImmudb(parsed []junit.Suite, client immuclient.ImmuClient, ctx c
 		}
 		log.Printf("Processing suite: %s", s.Name)
 		log.Printf("Executing: 'create table if not exists' for suite %s, characters not allowed in table names will be replaced by underscores", s.Name)
-		reg, err := regexp.Compile("[^a-zA-Z0-9]+")
-		if err != nil {
-			log.Fatalf("Error removing stripping %s, consider renaming your test suite", s.Name)
-		}
+		reg := regexp.MustCompile("[^a-zA-Z0-9]+")
 		relationsTableStatement := fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s (og_name VARCHAR[100], modified_name VARCHAR[100], PRIMARY KEY og_name)", nameRelationTable)
-		_, err = client.SQLExec(ctx, relationsTableStatement, nil)
+		_, err := client.SQLExec(ctx, relationsTableStatement, nil)
 		if err != nil {
 			log.Fatalf("Error creating relations table: %s", err.Error())
 		}
 		createStatement := ""
-		nameToUse := getOriginalName(client, ctx, s.Name)
+		nameToUse := getOriginalName(ctx, client, s.Name)
 		if nameToUse == "" {
 			processedString := reg.ReplaceAllString(s.Name, "")
-			formattedName := strings.Replace(processedString, " ", "_", -1)
+			formattedName := strings.ReplaceAll(processedString, " ", "_")
 			createStatement = fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s (id INTEGER AUTO_INCREMENT, name VARCHAR, classname VARCHAR, duration BLOB, status BLOB, message VARCHAR, error BLOB, properties BLOB, systemout VARCHAR, systemerr VARCHAR, PRIMARY KEY id)", formattedName)
 			relationStatement := fmt.Sprintf("INSERT INTO %s (og_name, modified_name) VALUES (@og_name, @modified_name)", nameRelationTable)
 			_, err := client.SQLExec(ctx, relationStatement, map[string]interface{}{"og_name": s.Name, "modified_name": formattedName})
@@ -154,7 +151,7 @@ func testSuiteToImmudb(parsed []junit.Suite, client immuclient.ImmuClient, ctx c
 			log.Fatalf("Error creating table %s", s.Name)
 		}
 		if err != nil {
-			log.Fatal(unmashalErr)
+			log.Fatal(unmarshallErr)
 		}
 		p, err := json.Marshal(s.Package)
 		if err != nil {
@@ -162,15 +159,15 @@ func testSuiteToImmudb(parsed []junit.Suite, client immuclient.ImmuClient, ctx c
 		}
 		props, err := json.Marshal(s.Properties)
 		if err != nil {
-			log.Fatal(unmashalErr)
+			log.Fatal(unmarshallErr)
 		}
 		t, err := json.Marshal(s.Tests)
 		if err != nil {
-			log.Fatal(unmashalErr)
+			log.Fatal(unmarshallErr)
 		}
 		suites, err := json.Marshal(s.Suites)
 		if err != nil {
-			log.Fatal(unmashalErr)
+			log.Fatal(unmarshallErr)
 		}
 		totals, err := json.Marshal(s.Totals)
 		if err != nil {
@@ -200,7 +197,7 @@ func testSuiteToImmudb(parsed []junit.Suite, client immuclient.ImmuClient, ctx c
 			if err != nil {
 				log.Fatalf("Error marshalling parser response for %s", t.Name)
 			}
-			//log.Println(fmt.Sprintf("Processing test case: %s", t.Name))
+			// log.Println(fmt.Sprintf("Processing test case: %s", t.Name))
 			_, err = client.SQLExec(ctx, fmt.Sprintf("INSERT INTO %s (name, classname, duration, status, message, error, properties, systemout, systemerr) VALUES (@name, @classname, @duration, @status, @message, @error, @properties, @systemout, @systemerr)", nameToUse), map[string]interface{}{"name": t.Name, "classname": t.Classname, "duration": d, "status": s, "message": t.Message, "error": e, "properties": p, "systemout": t.SystemOut, "systemerr": t.SystemErr})
 			if err != nil {
 				log.Fatalf("Error inserting test results: %s", err.Error())
@@ -210,7 +207,7 @@ func testSuiteToImmudb(parsed []junit.Suite, client immuclient.ImmuClient, ctx c
 
 }
 
-func readResults(client immuclient.ImmuClient, ctx context.Context) {
+func readResults(ctx context.Context, client immuclient.ImmuClient) {
 	tableList, err := client.ListTables(ctx)
 	if err != nil {
 		log.Fatalf("Error reading system tables")
@@ -232,8 +229,8 @@ func readResults(client immuclient.ImmuClient, ctx context.Context) {
 		log.Printf("Configuration: Summary %t, Suite Table Name:%s", config.readSummary, config.suiteTableName)
 		for t := range row {
 			log.Printf("Found table %s", row[t])
-			if strings.Contains(strings.Replace(row[t], `"`, "", -1), tableToLookFor) {
-				tableToUse = strings.Replace(row[t], `"`, "", -1)
+			if strings.Contains(strings.ReplaceAll(row[t], `"`, ""), tableToLookFor) {
+				tableToUse = strings.ReplaceAll(row[t], `"`, "")
 				break
 			}
 		}
@@ -251,12 +248,12 @@ func readResults(client immuclient.ImmuClient, ctx context.Context) {
 	colsLen := len(summaryResults.Columns)
 	for _, sumInfo := range summaryResults.Rows {
 		for i := 0; i <= colsLen-1; i++ {
-			currentCol := strings.Split(strings.Replace(sumInfo.Columns[i], `)`, "", -1), `.`)[len(strings.Split(sumInfo.Columns[i], `.`))-1]
+			currentCol := strings.Split(strings.ReplaceAll(sumInfo.Columns[i], `)`, ""), `.`)[len(strings.Split(sumInfo.Columns[i], `.`))-1]
 			currentVal := sumInfo.Values[i]
 			switch currentCol {
 			case "properties":
 				var props map[string]string
-				json.Unmarshal(currentVal.GetBs(), &props)
+				err := json.Unmarshal(currentVal.GetBs(), &props)
 				if err != nil {
 					log.Fatal("error marshalling value")
 				}
@@ -282,9 +279,9 @@ func main() {
 		if err != nil {
 			log.Fatalf("Failed to parse file, error: %s", config.filename)
 		}
-		testSuiteToImmudb(response, client, ctx)
+		testSuiteToImmudb(ctx, response, client)
 
 	} else {
-		readResults(client, ctx)
+		readResults(ctx, client)
 	}
 }
