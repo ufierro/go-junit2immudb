@@ -9,7 +9,7 @@ Test evidence artifacts such as JUnit reports are widely used and consumed in di
 
 ## Basic usage
 
-**Requires a running immudb instance, see <https://github.com/codenotary/immudb> for more information.**
+**Requires a running immudb instance, currently working with unreleased features @master branch, see <https://github.com/codenotary/immudb> for more information.**
 Build running (Requires golang 1.12 or newer or docker and docker-compose) :
 
 ```bash
