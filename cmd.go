@@ -30,6 +30,8 @@ var config struct {
 	limit int
 }
 
+var nameRelationTable string = "NM_REL"
+
 func initConfig() {
 	flag.StringVar(&config.hostname, "hostname", "localhost", "Hostname or IP address for immudb")
 	flag.StringVar(&config.username, "username", "immudb", "Username for authenticating to immudb")
@@ -93,6 +95,21 @@ func initDbSession() (immuclient.ImmuClient, context.Context) {
 	return client, ctx
 }
 
+func getOriginalName(client immuclient.ImmuClient, ctx context.Context, suiteName string) string {
+	q := fmt.Sprintf("SELECT modified_name FROM %s WHERE OG_NAME = '%s' ", nameRelationTable, suiteName)
+	nameQueryResult, err := client.SQLQuery(ctx, q, nil, false)
+	originalName := ""
+	if err != nil {
+		// this means the query failed, it's not an empty resultset
+		log.Fatalf("Error executing query: %s", q)
+	}
+	for _, rows := range nameQueryResult.Rows {
+		originalName = rows.Values[0].GetS()
+	}
+	log.Println(originalName)
+	return originalName
+}
+
 func testSuiteToImmudb(parsed []junit.Suite, client immuclient.ImmuClient, ctx context.Context) {
 	for _, s := range parsed {
 		if s.Name == "" {
@@ -105,9 +122,26 @@ func testSuiteToImmudb(parsed []junit.Suite, client immuclient.ImmuClient, ctx c
 		if err != nil {
 			log.Fatalf("Error removing stripping %s, consider renaming your test suite", s.Name)
 		}
-		processedString := reg.ReplaceAllString(s.Name, "")
-		formattedName := strings.Replace(processedString, " ", "_", -1)
-		createStatement := fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s (id INTEGER AUTO_INCREMENT, name VARCHAR, classname VARCHAR, duration BLOB, status BLOB, message VARCHAR, error BLOB, properties BLOB, systemout VARCHAR, systemerr VARCHAR, PRIMARY KEY id)", formattedName)
+		relationsTableStatement := fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s (og_name VARCHAR[100], modified_name VARCHAR[100], PRIMARY KEY og_name)", nameRelationTable)
+		_, err = client.SQLExec(ctx, relationsTableStatement, nil)
+		if err != nil {
+			log.Fatalf("Error creating relations table: %s", err.Error())
+		}
+		createStatement := ""
+		nameToUse := getOriginalName(client, ctx, s.Name)
+		if nameToUse == "" {
+			processedString := reg.ReplaceAllString(s.Name, "")
+			formattedName := strings.Replace(processedString, " ", "_", -1)
+			createStatement = fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s (id INTEGER AUTO_INCREMENT, name VARCHAR, classname VARCHAR, duration BLOB, status BLOB, message VARCHAR, error BLOB, properties BLOB, systemout VARCHAR, systemerr VARCHAR, PRIMARY KEY id)", formattedName)
+			relationStatement := fmt.Sprintf("INSERT INTO %s (og_name, modified_name) VALUES (@og_name, @modified_name)", nameRelationTable)
+			_, err := client.SQLExec(ctx, relationStatement, map[string]interface{}{"og_name": s.Name, "modified_name": formattedName})
+			if err != nil {
+				log.Fatalf("error creating table relationship for %s", relationStatement)
+			}
+			nameToUse = formattedName
+		} else {
+			createStatement = fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s (id INTEGER AUTO_INCREMENT, name VARCHAR, classname VARCHAR, duration BLOB, status BLOB, message VARCHAR, error BLOB, properties BLOB, systemout VARCHAR, systemerr VARCHAR, PRIMARY KEY id)", nameToUse)
+		}
 		log.Println(createStatement)
 		_, err = client.SQLExec(ctx, createStatement, nil)
 		if err != nil {
@@ -167,7 +201,7 @@ func testSuiteToImmudb(parsed []junit.Suite, client immuclient.ImmuClient, ctx c
 				log.Fatalf("Error marshalling parser response for %s", t.Name)
 			}
 			//log.Println(fmt.Sprintf("Processing test case: %s", t.Name))
-			_, err = client.SQLExec(ctx, fmt.Sprintf("INSERT INTO %s (name, classname, duration, status, message, error, properties, systemout, systemerr) VALUES (@name, @classname, @duration, @status, @message, @error, @properties, @systemout, @systemerr)", formattedName), map[string]interface{}{"name": t.Name, "classname": t.Classname, "duration": d, "status": s, "message": t.Message, "error": e, "properties": p, "systemout": t.SystemOut, "systemerr": t.SystemErr})
+			_, err = client.SQLExec(ctx, fmt.Sprintf("INSERT INTO %s (name, classname, duration, status, message, error, properties, systemout, systemerr) VALUES (@name, @classname, @duration, @status, @message, @error, @properties, @systemout, @systemerr)", nameToUse), map[string]interface{}{"name": t.Name, "classname": t.Classname, "duration": d, "status": s, "message": t.Message, "error": e, "properties": p, "systemout": t.SystemOut, "systemerr": t.SystemErr})
 			if err != nil {
 				log.Fatalf("Error inserting test results: %s", err.Error())
 			}
@@ -253,5 +287,4 @@ func main() {
 	} else {
 		readResults(client, ctx)
 	}
-
 }

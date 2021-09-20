@@ -1,3 +1,4 @@
 .vscode
 junit2immudb
 dist/go-junit2immudb
+data
