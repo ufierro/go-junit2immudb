@@ -95,6 +95,10 @@ func initDbSession() (immuclient.ImmuClient, context.Context) {
 
 func testSuiteToImmudb(parsed []junit.Suite, client immuclient.ImmuClient, ctx context.Context) {
 	for _, s := range parsed {
+		if s.Name == "" {
+			log.Printf("no test suite name found in %s , consider adding a name for ease of usage", config.filename)
+			s.Name = "generic_testsuite"
+		}
 		log.Printf("Processing suite: %s", s.Name)
 		log.Printf("Executing: 'create table if not exists' for suite %s, characters not allowed in table names will be replaced by underscores", s.Name)
 		reg, err := regexp.Compile("[^a-zA-Z0-9]+")
