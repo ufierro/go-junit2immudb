@@ -1,6 +1,6 @@
 # go-junit2immudb
 
-Inspired by https://github.com/SimoneLazzaris/stdin2immudb and https://github.com/joshdk/go-junit
+Inspired by <https://github.com/SimoneLazzaris/stdin2immudb> and <https://github.com/joshdk/go-junit>.  
 The purpose of this project is to provide a simple tool to store test results immutably.
 
 ## Why
@@ -30,9 +30,7 @@ Then after adding to your PATH environment variable or using a relative or fully
 
 Depending on the database configured via the ```database``` flag or using ```defaultdb``` as a fallback, this tool will create 2 tables, one for storing test suite results and one for storing individual results.
 
-
-## Pending: 
+## Pending
 
 * Once immudb supports new datatypes, migrate BLOBS to whatever is appropriate for the data.
 * This tool does not yet read the BLOB values from the database.
-  
