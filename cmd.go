@@ -46,9 +46,6 @@ func initConfig() {
 	flag.Parse()
 }
 
-var unmarshallErr = "Error unmarshalling value"
-var marshalErr = "Error marshalling value"
-
 func parseFiles() ([]junit.Suite, error) {
 	// check if file list or single file
 	var cError error
