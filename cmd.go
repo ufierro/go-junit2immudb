@@ -139,7 +139,6 @@ func testSuiteToImmudb(ctx context.Context, parsed []junit.Suite, client immucli
 		} else {
 			createStatement = fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s (id INTEGER AUTO_INCREMENT, name VARCHAR, classname VARCHAR, duration BLOB, status BLOB, message VARCHAR, error BLOB, properties BLOB, systemout VARCHAR, systemerr VARCHAR, PRIMARY KEY id)", nameToUse)
 		}
-		log.Println(createStatement)
 		_, err = client.SQLExec(ctx, createStatement, nil)
 		if err != nil {
 			log.Println(err.Error())
@@ -150,57 +149,26 @@ func testSuiteToImmudb(ctx context.Context, parsed []junit.Suite, client immucli
 			log.Println(err.Error())
 			log.Fatalf("Error creating table %s", s.Name)
 		}
-		if err != nil {
-			log.Fatal(unmarshallErr)
-		}
-		p, err := json.Marshal(s.Package)
-		if err != nil {
-			log.Fatal("Error marshaling parsed response from junit file")
-		}
-		props, err := json.Marshal(s.Properties)
-		if err != nil {
-			log.Fatal(unmarshallErr)
-		}
-		t, err := json.Marshal(s.Tests)
-		if err != nil {
-			log.Fatal(unmarshallErr)
-		}
-		suites, err := json.Marshal(s.Suites)
-		if err != nil {
-			log.Fatal(unmarshallErr)
-		}
-		totals, err := json.Marshal(s.Totals)
-		if err != nil {
-			log.Fatal("Error marshalling parser response for test suite summary")
-		}
+		p := marshalWrapper(s.Package)
+		props := marshalWrapper(s.Properties)
+		t := marshalWrapper(s.Tests)
+		suites := marshalWrapper(s.Suites)
+		totals := marshalWrapper(s.Totals)
 		_, err = client.SQLExec(
 			ctx, fmt.Sprintf("INSERT INTO %s (name, package, properties, tests, suites, systemout, systemerr, totals) VALUES (@name, @package, @properties, @tests, @suites, @systemout, @systemerr, @totals)",
 				config.suiteTableName), map[string]interface{}{"name": s.Name, "package": p, "properties": props, "tests": t, "suites": suites, "systemout": s.SystemOut, "systemerr": s.SystemErr, "totals": totals})
 		if err != nil {
 			log.Println(err.Error())
-			log.Fatal("Error inserting suite results into database")
+			log.Fatal("error inserting suite results into database")
 		}
 		for _, t := range s.Tests {
-			d, err := json.Marshal(t.Duration)
-			if err != nil {
-				log.Fatal(marshalErr)
-			}
-			p, err := json.Marshal(t.Properties)
-			if err != nil {
-				log.Fatal(marshalErr)
-			}
-			s, err := json.Marshal(t.Status)
-			if err != nil {
-				log.Fatal(marshalErr)
-			}
-			e, err := json.Marshal(t.Error)
-			if err != nil {
-				log.Fatalf("Error marshalling parser response for %s", t.Name)
-			}
-			// log.Println(fmt.Sprintf("Processing test case: %s", t.Name))
+			d := marshalWrapper(t.Duration)
+			p := marshalWrapper(t.Properties)
+			s := marshalWrapper(t.Status)
+			e := marshalWrapper(t.Error)
 			_, err = client.SQLExec(ctx, fmt.Sprintf("INSERT INTO %s (name, classname, duration, status, message, error, properties, systemout, systemerr) VALUES (@name, @classname, @duration, @status, @message, @error, @properties, @systemout, @systemerr)", nameToUse), map[string]interface{}{"name": t.Name, "classname": t.Classname, "duration": d, "status": s, "message": t.Message, "error": e, "properties": p, "systemout": t.SystemOut, "systemerr": t.SystemErr})
 			if err != nil {
-				log.Fatalf("Error inserting test results: %s", err.Error())
+				log.Fatalf("error inserting test results: %s", err.Error())
 			}
 		}
 	}
@@ -255,6 +223,7 @@ func readResults(ctx context.Context, client immuclient.ImmuClient) {
 				var props map[string]string
 				err := json.Unmarshal(currentVal.GetBs(), &props)
 				if err != nil {
+					log.Println(err.Error())
 					log.Fatal("error marshalling value")
 				}
 				log.Printf("------%s-------", currentCol)
