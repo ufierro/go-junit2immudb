@@ -1,18 +1,52 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"log"
+
+	"github.com/codenotary/immudb/pkg/api/schema"
+	"github.com/codenotary/immudb/pkg/client"
+	"github.com/joshdk/go-junit"
 )
 
 func marshalWrapper(v interface{}) []byte {
 	r, err := json.Marshal(v)
-	if err != nil{
+	if err != nil {
 		log.Fatal(err.Error())
 	}
 	return r
 }
 
-func printResults(){
+func primeImmudb(ctx context.Context, client client.ImmuClient, parsed []junit.Suite) {
+	relationsTableStatement := fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s (og_name VARCHAR[100], modified_name VARCHAR[100], PRIMARY KEY og_name)", nameRelationTable)
+	_, err := client.SQLExec(ctx, relationsTableStatement, nil)
+	if err != nil {
+		log.Fatalf("Error creating relations table: %s", err.Error())
+	}
+}
+
+func unBlob(col string, blob *schema.SQLValue) map[string]interface{} {
+	var unBlobbed map[string]interface{}
+	switch col {
+	case "properties":
+		json.Unmarshal(blob.GetBs(), &unBlobbed)
+		return unBlobbed
+	case "status":
+		res := make(map[string]interface{})
+		res[col] = blob.GetN()
+		return res
+	default:
+		err := json.Unmarshal(blob.GetBs(), &unBlobbed)
+		if err != nil {
+			log.Fatal(err.Error())
+		}
+		return unBlobbed
+	}
+
+}
+
+func printResults() {
 
 }

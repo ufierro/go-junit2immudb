@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
@@ -111,6 +110,7 @@ func getOriginalName(ctx context.Context, client immuclient.ImmuClient, suiteNam
 }
 
 func testSuiteToImmudb(ctx context.Context, parsed []junit.Suite, client immuclient.ImmuClient) {
+	primeImmudb(ctx, client, parsed)
 	for _, s := range parsed {
 		if s.Name == "" {
 			log.Printf("no test suite name found in %s , consider adding a name for ease of usage", config.filename)
@@ -119,11 +119,6 @@ func testSuiteToImmudb(ctx context.Context, parsed []junit.Suite, client immucli
 		log.Printf("Processing suite: %s", s.Name)
 		log.Printf("Executing: 'create table if not exists' for suite %s, characters not allowed in table names will be replaced by underscores", s.Name)
 		reg := regexp.MustCompile("[^a-zA-Z0-9]+")
-		relationsTableStatement := fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s (og_name VARCHAR[100], modified_name VARCHAR[100], PRIMARY KEY og_name)", nameRelationTable)
-		_, err := client.SQLExec(ctx, relationsTableStatement, nil)
-		if err != nil {
-			log.Fatalf("Error creating relations table: %s", err.Error())
-		}
 		createStatement := ""
 		nameToUse := getOriginalName(ctx, client, s.Name)
 		if nameToUse == "" {
@@ -139,7 +134,7 @@ func testSuiteToImmudb(ctx context.Context, parsed []junit.Suite, client immucli
 		} else {
 			createStatement = fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s (id INTEGER AUTO_INCREMENT, name VARCHAR, classname VARCHAR, duration BLOB, status BLOB, message VARCHAR, error BLOB, properties BLOB, systemout VARCHAR, systemerr VARCHAR, PRIMARY KEY id)", nameToUse)
 		}
-		_, err = client.SQLExec(ctx, createStatement, nil)
+		_, err := client.SQLExec(ctx, createStatement, nil)
 		if err != nil {
 			log.Println(err.Error())
 			log.Fatalf("Error creating table %s", s.Name)
@@ -172,7 +167,6 @@ func testSuiteToImmudb(ctx context.Context, parsed []junit.Suite, client immucli
 			}
 		}
 	}
-
 }
 
 func readResults(ctx context.Context, client immuclient.ImmuClient) {
@@ -207,7 +201,6 @@ func readResults(ctx context.Context, client immuclient.ImmuClient) {
 		tableToUse = config.readPrefix
 	}
 	q := fmt.Sprintf("SELECT * FROM %s", tableToUse)
-	log.Println(q)
 	summaryResults, err := client.SQLQuery(ctx, q, nil, false)
 	if err != nil {
 		log.Println(err.Error())
@@ -215,28 +208,24 @@ func readResults(ctx context.Context, client immuclient.ImmuClient) {
 	}
 	colsLen := len(summaryResults.Columns)
 	for _, sumInfo := range summaryResults.Rows {
+		results := make(map[string]interface{})
 		for i := 0; i <= colsLen-1; i++ {
 			currentCol := strings.Split(strings.ReplaceAll(sumInfo.Columns[i], `)`, ""), `.`)[len(strings.Split(sumInfo.Columns[i], `.`))-1]
 			currentVal := sumInfo.Values[i]
 			switch currentCol {
-			case "properties":
-				var props map[string]string
-				err := json.Unmarshal(currentVal.GetBs(), &props)
-				if err != nil {
-					log.Println(err.Error())
-					log.Fatal("error marshalling value")
-				}
-				log.Printf("------%s-------", currentCol)
-				for k, v := range props {
-					log.Printf("%s:%s", k, v)
-				}
+			// id INTEGER AUTO_INCREMENT, name VARCHAR, package BLOB, properties BLOB, tests BLOB, suites BLOB, systemout VARCHAR, systemerr VARCHAR, totals BLOB
+			// duration BLOB, status BLOB,
+			case "properties", "package", "tests", "suites", "totals", "status":
+				results[currentCol] = unBlob(currentCol, currentVal)
+			case "name", "systemout", "systemerr", "classname", "message":
+				results[currentCol] = currentVal.GetS()
+			case "id":
+				results[currentCol] = currentVal.GetN()
 			default:
-				log.Printf("------%s-------\n------%s-------", currentCol, currentVal)
-
+				results[currentCol] = currentVal.GetValue()
 			}
-
 		}
-
+		log.Println(results)
 	}
 }
 
@@ -249,7 +238,6 @@ func main() {
 			log.Fatalf("Failed to parse file, error: %s", config.filename)
 		}
 		testSuiteToImmudb(ctx, response, client)
-
 	} else {
 		readResults(ctx, client)
 	}
