@@ -5,6 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"os"
+
+	"github.com/jedib0t/go-pretty/v6/table"
 
 	"github.com/codenotary/immudb/pkg/api/schema"
 	"github.com/codenotary/immudb/pkg/client"
@@ -47,6 +50,13 @@ func unBlob(col string, blob *schema.SQLValue) map[string]interface{} {
 
 }
 
-func printResults() {
-
+func printResults(results []Result) {
+	t := table.NewWriter()
+	t.SetOutputMirror(os.Stdout)
+	t.AppendHeader(table.Row{"ID", "Name", "Status", "Duration", "Error", "Message", "Stdout", "Stderr", "Classname", "Properties"})
+	for _, x := range results {
+		//TODO: Split this into separate fields, convert everything to string or integer
+		t.AppendRow(table.Row{x})
+	}
+	t.Render()
 }

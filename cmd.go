@@ -31,6 +31,8 @@ var config struct {
 
 var nameRelationTable = "NM_REL"
 
+type Result map[string]interface{}
+
 func initConfig() {
 	flag.StringVar(&config.hostname, "hostname", "localhost", "Hostname or IP address for immudb")
 	flag.StringVar(&config.username, "username", "immudb", "Username for authenticating to immudb")
@@ -124,8 +126,8 @@ func testSuiteToImmudb(ctx context.Context, parsed []junit.Suite, client immucli
 			createStatement = fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s (id INTEGER AUTO_INCREMENT, name VARCHAR, classname VARCHAR, duration BLOB, status BLOB, message VARCHAR, error BLOB, properties BLOB, systemout VARCHAR, systemerr VARCHAR, PRIMARY KEY id)", formattedName)
 			relationStatement := fmt.Sprintf("INSERT INTO %s (og_name, modified_name) VALUES (@og_name, @modified_name)", nameRelationTable)
 			_, err := client.SQLExec(ctx, relationStatement, map[string]interface{}{"og_name": s.Name, "modified_name": formattedName})
-			if err != nil {
-				log.Fatalf("error creating table relationship for %s", relationStatement)
+			if err != nil && !strings.Contains(err.Error(), "key already exists") {
+				log.Fatalf("Error creation table relation for %s", s.Name)
 			}
 			nameToUse = formattedName
 		} else {
@@ -185,16 +187,16 @@ func readResults(ctx context.Context, client immuclient.ImmuClient) {
 		for i, v := range r.Values {
 			row[i] = schema.RenderValue(v.Value)
 		}
-		log.Printf("Configuration: Summary %t, Suite Table Name:%s", config.readSummary, config.suiteTableName)
 		for t := range row {
-			log.Printf("Found table %s", row[t])
 			if strings.Contains(strings.ReplaceAll(row[t], `"`, ""), tableToLookFor) {
+				log.Printf("Found table %s", row[t])
 				tableToUse = strings.ReplaceAll(row[t], `"`, "")
 				break
 			}
 		}
 	}
 	if tableToUse == "" {
+		log.Printf("Table %s not found, falling back to %s instead", tableToLookFor, config.readPrefix)
 		tableToUse = config.readPrefix
 	}
 	q := fmt.Sprintf("SELECT * FROM %s", tableToUse)
@@ -204,14 +206,13 @@ func readResults(ctx context.Context, client immuclient.ImmuClient) {
 		log.Fatalf("Failed to read table %s", tableToUse)
 	}
 	colsLen := len(summaryResults.Columns)
+	var aggregated []Result
 	for _, sumInfo := range summaryResults.Rows {
 		results := make(map[string]interface{})
 		for i := 0; i <= colsLen-1; i++ {
 			currentCol := strings.Split(strings.ReplaceAll(sumInfo.Columns[i], `)`, ""), `.`)[len(strings.Split(sumInfo.Columns[i], `.`))-1]
 			currentVal := sumInfo.Values[i]
 			switch currentCol {
-			// id INTEGER AUTO_INCREMENT, name VARCHAR, package BLOB, properties BLOB, tests BLOB, suites BLOB, systemout VARCHAR, systemerr VARCHAR, totals BLOB
-			// duration BLOB, status BLOB,
 			case "properties", "package", "tests", "suites", "totals", "status":
 				results[currentCol] = unBlob(currentCol, currentVal)
 			case "name", "systemout", "systemerr", "classname", "message":
@@ -222,8 +223,9 @@ func readResults(ctx context.Context, client immuclient.ImmuClient) {
 				results[currentCol] = currentVal.GetValue()
 			}
 		}
-		log.Println(results)
+		aggregated = append(aggregated, results)
 	}
+	printResults(aggregated)
 }
 
 func main() {
