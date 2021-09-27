@@ -123,7 +123,7 @@ func testSuiteToImmudb(ctx context.Context, parsed []junit.Suite, client immucli
 		if nameToUse == "" {
 			processedString := reg.ReplaceAllString(s.Name, "")
 			formattedName := strings.ReplaceAll(processedString, " ", "_")
-			createStatement = fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s (id INTEGER AUTO_INCREMENT, name VARCHAR, classname VARCHAR, duration BLOB, status BLOB, message VARCHAR, error BLOB, properties BLOB, systemout VARCHAR, systemerr VARCHAR, PRIMARY KEY id)", formattedName)
+			createStatement = fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s (id INTEGER AUTO_INCREMENT, name VARCHAR, classname VARCHAR, duration VARCHAR, status BLOB, message VARCHAR, error BLOB, properties BLOB, systemout VARCHAR, systemerr VARCHAR, PRIMARY KEY id)", formattedName)
 			relationStatement := fmt.Sprintf("INSERT INTO %s (og_name, modified_name) VALUES (@og_name, @modified_name)", nameRelationTable)
 			_, err := client.SQLExec(ctx, relationStatement, map[string]interface{}{"og_name": s.Name, "modified_name": formattedName})
 			if err != nil && !strings.Contains(err.Error(), "key already exists") {
@@ -131,7 +131,7 @@ func testSuiteToImmudb(ctx context.Context, parsed []junit.Suite, client immucli
 			}
 			nameToUse = formattedName
 		} else {
-			createStatement = fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s (id INTEGER AUTO_INCREMENT, name VARCHAR, classname VARCHAR, duration BLOB, status BLOB, message VARCHAR, error BLOB, properties BLOB, systemout VARCHAR, systemerr VARCHAR, PRIMARY KEY id)", nameToUse)
+			createStatement = fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s (id INTEGER AUTO_INCREMENT, name VARCHAR, classname VARCHAR, duration VARCHAR, status BLOB, message VARCHAR, error BLOB, properties BLOB, systemout VARCHAR, systemerr VARCHAR, PRIMARY KEY id)", nameToUse)
 		}
 		_, err := client.SQLExec(ctx, createStatement, nil)
 		if err != nil {
@@ -160,7 +160,7 @@ func testSuiteToImmudb(ctx context.Context, parsed []junit.Suite, client immucli
 			p := marshalWrapper(t.Properties)
 			s := marshalWrapper(t.Status)
 			e := marshalWrapper(t.Error)
-			_, err = client.SQLExec(ctx, fmt.Sprintf("INSERT INTO %s (name, classname, duration, status, message, error, properties, systemout, systemerr) VALUES (@name, @classname, @duration, @status, @message, @error, @properties, @systemout, @systemerr)", nameToUse), map[string]interface{}{"name": t.Name, "classname": t.Classname, "duration": d, "status": s, "message": t.Message, "error": e, "properties": p, "systemout": t.SystemOut, "systemerr": t.SystemErr})
+			_, err = client.SQLExec(ctx, fmt.Sprintf("INSERT INTO %s (name, classname, duration, status, message, error, properties, systemout, systemerr) VALUES (@name, @classname, @duration, @status, @message, @error, @properties, @systemout, @systemerr)", nameToUse), map[string]interface{}{"name": t.Name, "classname": t.Classname, "duration": string(d), "status": s, "message": t.Message, "error": e, "properties": p, "systemout": t.SystemOut, "systemerr": t.SystemErr})
 			if err != nil {
 				log.Fatalf("error inserting test results: %s", err.Error())
 			}
@@ -213,9 +213,17 @@ func readResults(ctx context.Context, client immuclient.ImmuClient) {
 			currentCol := strings.Split(strings.ReplaceAll(sumInfo.Columns[i], `)`, ""), `.`)[len(strings.Split(sumInfo.Columns[i], `.`))-1]
 			currentVal := sumInfo.Values[i]
 			switch currentCol {
-			case "properties", "package", "tests", "suites", "totals", "status":
+			case "properties", "package", "tests", "suites", "totals":
 				results[currentCol] = unBlob(currentCol, currentVal)
-			case "name", "systemout", "systemerr", "classname", "message":
+			case "status", "error", "message", "stdout", "stderr":
+				resLen := len(currentVal.GetBs())
+				if resLen == 0 {
+					log.Println(resLen)
+					results[currentCol] = ""
+				} else {
+					results[currentCol] = string(currentVal.GetBs()[1 : resLen-1])
+				}
+			case "name", "systemout", "systemerr", "classname", "duration":
 				results[currentCol] = currentVal.GetS()
 			case "id":
 				results[currentCol] = currentVal.GetN()

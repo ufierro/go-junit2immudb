@@ -36,10 +36,6 @@ func unBlob(col string, blob *schema.SQLValue) map[string]interface{} {
 	case "properties":
 		json.Unmarshal(blob.GetBs(), &unBlobbed)
 		return unBlobbed
-	case "status":
-		res := make(map[string]interface{})
-		res[col] = blob.GetN()
-		return res
 	default:
 		err := json.Unmarshal(blob.GetBs(), &unBlobbed)
 		if err != nil {
@@ -50,13 +46,20 @@ func unBlob(col string, blob *schema.SQLValue) map[string]interface{} {
 
 }
 
+func noNulls(val interface{}) interface{} {
+	if val == nil {
+		return ""
+	} else {
+		return val
+	}
+}
+
 func printResults(results []Result) {
 	t := table.NewWriter()
 	t.SetOutputMirror(os.Stdout)
 	t.AppendHeader(table.Row{"ID", "Name", "Status", "Duration", "Error", "Message", "Stdout", "Stderr", "Classname", "Properties"})
 	for _, x := range results {
-		//TODO: Split this into separate fields, convert everything to string or integer
-		t.AppendRow(table.Row{x})
+		t.AppendRow(table.Row{x["id"], x["name"], x["status"], x["duration"], x["error"], x["message"], noNulls(x["stdout"]), noNulls(x["stderr"]), noNulls(x["classname"]), noNulls(x["properties"])})
 	}
 	t.Render()
 }
